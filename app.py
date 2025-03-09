@@ -121,6 +121,9 @@ if uploaded_file is not None:
         st.subheader(f"Grayscale Image")
         st.image(gray_img, clamp=True)
         
+        st.subheader(f"Blurred Image")
+        st.image(blurred, clamp=True)
+
         st.subheader(f"Thresholded Image ({threshold_method})")
         st.image(thresh, clamp=True)  # 'clamp=True' helps ensure it's shown as binary
         
