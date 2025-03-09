@@ -29,6 +29,8 @@ if uploaded_file is not None:
         # --------------------------------------------
         # 2) Sidebar Controls
         # --------------------------------------------
+        blur_ksize = st.sidebar.slider("Gaussian Blur Kernel", min_value=1, max_value=31, value=5, step=2)
+
         st.sidebar.header("Threshold Parameters")
         threshold_method = st.sidebar.selectbox("Threshold Method", 
                                                 ["Global", "Otsu", "Adaptive Gaussian", "Adaptive Mean"])
@@ -44,7 +46,6 @@ if uploaded_file is not None:
                                             ["None", "Erosion", "Dilation", "Opening", "Closing"])
         
         morph_ksize = st.sidebar.slider("Morph Kernel Size", min_value=1, max_value=21, value=5, step=1)
-        blur_ksize = st.sidebar.slider("Gaussian Blur Kernel", min_value=1, max_value=31, value=5, step=2)
         
         st.sidebar.header("Contour Detection")
         min_area = st.sidebar.slider("Min Contour Area", min_value=1, max_value=20000, value=1000, step=100)
@@ -117,6 +118,9 @@ if uploaded_file is not None:
         # --------------------------------------------
         # 4) Show results
         # --------------------------------------------
+        st.subheader(f"Grayscale Image")
+        st.image(gray_img, clamp=True)
+        
         st.subheader(f"Thresholded Image ({threshold_method})")
         st.image(thresh, clamp=True)  # 'clamp=True' helps ensure it's shown as binary
         
