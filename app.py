@@ -1,80 +1,132 @@
-import asyncio
-import av
-import cv2
-import numpy as np
 import streamlit as st
-from streamlit_webrtc import webrtc_streamer, VideoProcessorBase
+import numpy as np
+import cv2
+from PIL import Image
 
-# Optional: Ensure there’s a running event loop (this may help in some environments)
-try:
-    asyncio.get_running_loop()
-except RuntimeError:
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
+# Set the page title and layout
+st.set_page_config(page_title="Interactive CV Demo", layout="centered")
 
-st.title("Real-Time Malaysian Coin Detection")
-st.write("Adjust the parameters from the sidebar to tune coin detection.")
+st.title("Interactive Computer Vision Demo")
 
-# Sidebar parameters for Hough Circle Transform tuning
-dp = st.sidebar.slider("dp (×10)", min_value=1, max_value=30, value=12) / 10.0
-minDist = st.sidebar.slider("minDist", min_value=10, max_value=200, value=50)
-param1 = st.sidebar.slider("param1", min_value=10, max_value=200, value=50)
-param2 = st.sidebar.slider("param2", min_value=10, max_value=100, value=30)
-minRadius = st.sidebar.slider("minRadius", min_value=1, max_value=100, value=10)
-maxRadius = st.sidebar.slider("maxRadius", min_value=1, max_value=200, value=50)
-
-class CoinDetectionProcessor(VideoProcessorBase):
-    def __init__(self):
-        # Initialize with default slider values; these will be updated in every frame
-        self.dp = dp
-        self.minDist = minDist
-        self.param1 = param1
-        self.param2 = param2
-        self.minRadius = minRadius
-        self.maxRadius = maxRadius
-
-    def recv(self, frame: av.VideoFrame) -> av.VideoFrame:
-        # Update parameters from the current slider positions
-        self.dp = dp
-        self.minDist = minDist
-        self.param1 = param1
-        self.param2 = param2
-        self.minRadius = minRadius
-        self.maxRadius = maxRadius
-
-        # Convert incoming frame to a numpy array in BGR format
-        img = frame.to_ndarray(format="bgr24")
-        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        blurred = cv2.GaussianBlur(gray, (9, 9), 2)
-
-        # Detect circles using the Hough Circle Transform
-        circles = cv2.HoughCircles(
-            blurred,
-            cv2.HOUGH_GRADIENT,
-            dp=self.dp,
-            minDist=self.minDist,
-            param1=self.param1,
-            param2=self.param2,
-            minRadius=self.minRadius,
-            maxRadius=self.maxRadius,
-        )
-
-        # Draw detection results on the frame
-        if circles is not None:
-            circles = np.round(circles[0, :]).astype("int")
-            cv2.putText(img, f"Detected: {len(circles)}", (10, 50),
-                        cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
-            for (x, y, r) in circles:
-                cv2.circle(img, (x, y), r, (0, 255, 0), 2)
-                cv2.circle(img, (x, y), 2, (0, 0, 255), 3)
-        else:
-            cv2.putText(img, "No circles detected", (10, 50),
-                        cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
-        return av.VideoFrame.from_ndarray(img, format="bgr24")
-
-# Use video_processor_factory (new name) to launch the webRTC streamer
-webrtc_streamer(
-    key="coin-detection",
-    video_processor_factory=CoinDetectionProcessor,
-    media_stream_constraints={"video": True, "audio": False},
-)
+# --------------------------------------------
+# 1) Image Upload & Preprocessing
+# --------------------------------------------
+uploaded_file = st.file_uploader("Choose an image...", type=["jpg", "jpeg", "png"])
+if uploaded_file is not None:
+    # Convert the file to an OpenCV image
+    file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
+    original_bgr = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
+    
+    if original_bgr is not None:
+        # Convert to RGB for display
+        original_rgb = cv2.cvtColor(original_bgr, cv2.COLOR_BGR2RGB)
+        gray_img = cv2.cvtColor(original_bgr, cv2.COLOR_BGR2GRAY)
+        
+        # Show the uploaded image
+        st.subheader("Original Image")
+        st.image(original_rgb, channels="RGB")
+        
+        # --------------------------------------------
+        # 2) Sidebar Controls
+        # --------------------------------------------
+        st.sidebar.header("Threshold Parameters")
+        threshold_method = st.sidebar.selectbox("Threshold Method", 
+                                                ["Global", "Otsu", "Adaptive Gaussian", "Adaptive Mean"])
+        
+        # Some of these widgets will only matter for certain threshold methods
+        global_thresh = st.sidebar.slider("Global Threshold", min_value=0, max_value=255, value=127, step=1)
+        
+        block_size = st.sidebar.slider("Block Size (Adaptive)", min_value=3, max_value=51, value=11, step=2)
+        C = st.sidebar.slider("C (Adaptive)", min_value=-10, max_value=10, value=2, step=1)
+        
+        st.sidebar.header("Morphology & Filtering")
+        morph_method = st.sidebar.selectbox("Morphological Operation", 
+                                            ["None", "Erosion", "Dilation", "Opening", "Closing"])
+        
+        morph_ksize = st.sidebar.slider("Morph Kernel Size", min_value=1, max_value=21, value=5, step=1)
+        blur_ksize = st.sidebar.slider("Gaussian Blur Kernel", min_value=1, max_value=31, value=5, step=2)
+        
+        st.sidebar.header("Contour Detection")
+        min_area = st.sidebar.slider("Min Contour Area", min_value=1, max_value=20000, value=1000, step=100)
+        
+        # --------------------------------------------
+        # 3) Processing Pipeline
+        # --------------------------------------------
+        # (a) Gaussian blur (ensure blur_ksize is odd)
+        if blur_ksize < 1:
+            blur_ksize = 1
+        if blur_ksize % 2 == 0:
+            blur_ksize += 1
+        
+        blurred = cv2.GaussianBlur(gray_img, (blur_ksize, blur_ksize), 0)
+        
+        # (b) Thresholding
+        if threshold_method == "Global":
+            _, thresh = cv2.threshold(blurred, global_thresh, 255, cv2.THRESH_BINARY_INV)
+        elif threshold_method == "Otsu":
+            _, thresh = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+        elif threshold_method == "Adaptive Gaussian":
+            # Ensure block_size is odd
+            if block_size < 3:
+                block_size = 3
+            if block_size % 2 == 0:
+                block_size += 1
+            thresh = cv2.adaptiveThreshold(blurred, 255,
+                                           cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+                                           cv2.THRESH_BINARY_INV,
+                                           block_size, C)
+        else:  # "Adaptive Mean"
+            if block_size < 3:
+                block_size = 3
+            if block_size % 2 == 0:
+                block_size += 1
+            thresh = cv2.adaptiveThreshold(blurred, 255,
+                                           cv2.ADAPTIVE_THRESH_MEAN_C,
+                                           cv2.THRESH_BINARY_INV,
+                                           block_size, C)
+        
+        # (c) Morphological operation
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (morph_ksize, morph_ksize))
+        if morph_method == "None":
+            morphed = thresh
+        elif morph_method == "Erosion":
+            morphed = cv2.erode(thresh, kernel, iterations=1)
+        elif morph_method == "Dilation":
+            morphed = cv2.dilate(thresh, kernel, iterations=1)
+        elif morph_method == "Opening":
+            morphed = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel)
+        else:  # "Closing"
+            morphed = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel)
+        
+        # (d) Find contours
+        contours, _ = cv2.findContours(morphed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        
+        # (e) Draw bounding boxes on a copy of the original image
+        output = original_bgr.copy()  # BGR copy
+        count = 0
+        for cnt in contours:
+            area = cv2.contourArea(cnt)
+            if area > min_area:
+                count += 1
+                x, y, w, h = cv2.boundingRect(cnt)
+                cv2.rectangle(output, (x, y), (x+w, y+h), (0, 255, 0), 2)
+        
+        # Convert output to RGB for display
+        output_rgb = cv2.cvtColor(output, cv2.COLOR_BGR2RGB)
+        
+        # --------------------------------------------
+        # 4) Show results
+        # --------------------------------------------
+        st.subheader(f"Thresholded Image ({threshold_method})")
+        st.image(thresh, clamp=True)  # 'clamp=True' helps ensure it's shown as binary
+        
+        st.subheader(f"Morphological Operation: {morph_method}")
+        st.image(morphed, clamp=True)
+        
+        st.subheader(f"Final Output – Found {count} Contours")
+        st.image(output_rgb, channels="RGB")
+        
+    else:
+        st.write("Failed to load the image. Please check your file.")
+else:
+    st.write("Upload an image to get started.")
