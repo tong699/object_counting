@@ -9,7 +9,7 @@ import joblib
 
 # Parameters
 IMAGE_DIR = "images"  # Directory containing the images
-CSV_PATH = "annotations.csv"  # CSV file with annotation data
+CSV_PATH = "images/annotations.csv"  # CSV file with annotation data
 ROI_SIZE = (32, 32)  # Fixed size for ROI extraction
 
 # Read the CSV
