@@ -4,3 +4,5 @@ streamlit-webrtc
 av
 numpy
 Pillow
+scikit-learn
+joblib
