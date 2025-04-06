@@ -7,3 +7,4 @@ Pillow
 scikit-learn
 joblib
 ultralytics
+streamlit_drawable_canvas
