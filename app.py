@@ -29,7 +29,7 @@ run = st.checkbox("▶️ Start Webcam Stream")
 frame_placeholder = st.empty()
 
 if run:
-    cap = cv2.VideoCapture(1)
+    cap = cv2.VideoCapture(0)
 
     if not cap.isOpened():
         st.error("🚨 Could not access the webcam.")
